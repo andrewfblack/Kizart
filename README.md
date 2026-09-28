@@ -28,7 +28,7 @@ For iOS, open `ios/Runner.xcworkspace` on macOS if signing configuration is need
 
 `.github/workflows/ios.yml` runs analysis, tests, and an unsigned iOS release build on pushes and pull requests to `main`. The resulting `Runner.app` is uploaded as a workflow artifact for build verification.
 
-After signing is enabled, every successful push to `main` also uses Fastlane and the private `match-signing` repository to create a signed IPA and upload it to TestFlight. The permanent iOS bundle identifier is `com.kizart.app`.
+After signing is enabled, every successful push to `main` also uses Fastlane and the private `kizart-signing` repository to create a signed IPA and upload it to TestFlight. The permanent iOS bundle identifier is `com.kizart.app`. Kizart uses its own signing repository so changes cannot affect other apps.
 
 The TestFlight job requires these encrypted GitHub Actions secrets:
 

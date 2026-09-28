@@ -20,7 +20,7 @@ platform :ios do
     app_id = ENV.fetch("APP_ID", "com.kizart.app")
     match_repository = ENV.fetch(
       "MATCH_REPOSITORY",
-      "https://github.com/andrewfblack/match-signing.git"
+      "https://github.com/andrewfblack/kizart-signing.git"
     )
     basic_auth = ENV["MATCH_GIT_BASIC_AUTHORIZATION"].to_s.gsub(/\s+/, "")
 
