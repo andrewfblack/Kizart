@@ -1,0 +1,90 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Build a signed IPA and upload it to TestFlight"
+  lane :push_to_testflight do
+    required_secrets = %w[
+      TEAM_ID
+      APPLE_KEY_ID
+      APPLE_ISSUER_ID
+      APPLE_KEY_CONTENT
+      MATCH_PASSWORD
+      MATCH_GIT_BASIC_AUTHORIZATION
+    ]
+    required_secrets.each do |key|
+      if ENV[key].to_s.strip.empty?
+        UI.user_error!("Missing GitHub Actions secret: #{key}")
+      end
+    end
+
+    app_id = ENV.fetch("APP_ID", "com.kizart.app")
+    match_repository = ENV.fetch(
+      "MATCH_REPOSITORY",
+      "https://github.com/andrewfblack/match-signing.git"
+    )
+    basic_auth = ENV["MATCH_GIT_BASIC_AUTHORIZATION"].to_s.gsub(/\s+/, "")
+
+    setup_ci(timeout: 3600) if ENV["CI"] == "true"
+
+    api_key = app_store_connect_api_key(
+      key_id: ENV["APPLE_KEY_ID"],
+      issuer_id: ENV["APPLE_ISSUER_ID"],
+      key_content: ENV["APPLE_KEY_CONTENT"],
+      is_key_content_base64: true
+    )
+
+    match(
+      type: "appstore",
+      app_identifier: app_id,
+      git_url: match_repository,
+      api_key: api_key,
+      readonly: false,
+      force: false,
+      git_basic_authorization: basic_auth
+    )
+
+    latest_build = latest_testflight_build_number(
+      app_identifier: app_id,
+      api_key: api_key,
+      initial_build_number: 0
+    )
+    next_build = latest_build + 1
+
+    sh("flutter pub get")
+
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: "ios/Runner.xcodeproj",
+      team_id: ENV["TEAM_ID"],
+      bundle_identifier: app_id,
+      code_sign_identity: "Apple Distribution",
+      profile_name: "match AppStore #{app_id}"
+    )
+
+    gym(
+      workspace: "ios/Runner.xcworkspace",
+      scheme: "Runner",
+      configuration: "Release",
+      export_method: "app-store",
+      output_directory: "build/ios/ipa",
+      output_name: "Kizart",
+      clean: true,
+      xcargs: "DEVELOPMENT_TEAM=#{ENV['TEAM_ID']} CURRENT_PROJECT_VERSION=#{next_build}",
+      export_team_id: ENV["TEAM_ID"],
+      export_options: {
+        provisioningProfiles: {
+          app_id => "match AppStore #{app_id}"
+        }
+      }
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      ipa: "build/ios/ipa/Kizart.ipa",
+      skip_waiting_for_build_processing: false,
+      distribute_external: false,
+      notify_external_testers: false,
+      changelog: "GitHub build #{next_build} from #{git_branch}"
+    )
+  end
+end

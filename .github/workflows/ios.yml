@@ -1,0 +1,97 @@
+name: iOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Test and build iOS
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.5
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Build unsigned iOS release
+        run: flutter build ios --release --no-codesign
+
+      - name: Package application
+        run: ditto -c -k --sequesterRsrc --keepParent build/ios/iphoneos/Runner.app Kizart-iOS-unsigned.zip
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kizart-iOS-unsigned-${{ github.sha }}
+          path: Kizart-iOS-unsigned.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  testflight:
+    name: Upload to TestFlight
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      vars.TESTFLIGHT_ENABLED == 'true'
+    runs-on: macos-15
+    timeout-minutes: 45
+    needs: validate
+    env:
+      APP_ID: ${{ vars.APP_ID }}
+      TEAM_ID: ${{ secrets.TEAM_ID }}
+      APPLE_KEY_ID: ${{ secrets.APPLE_KEY_ID }}
+      APPLE_ISSUER_ID: ${{ secrets.APPLE_ISSUER_ID }}
+      APPLE_KEY_CONTENT: ${{ secrets.APPLE_KEY_CONTENT }}
+      MATCH_REPOSITORY: ${{ vars.MATCH_REPOSITORY }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.5
+          channel: stable
+          cache: true
+
+      - name: Set up Ruby and Fastlane
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Disable Git Credential Manager
+        run: git config --global credential.helper ""
+
+      - name: Build and upload to TestFlight
+        run: bundle exec fastlane ios push_to_testflight
